@@ -1,0 +1,69 @@
+user			date					pay
+zhangsan 		2022-01-05 09:08:00		100     rowkey:zhangsan_2022-01-05 09:08:00
+zhangsan 		2021-12-30 09:08:00		100
+zhangsanfeng	2022-01-04 09:08:00		200
+lisi			2021-12-31 09:08:00		150
+
+（1）统计张三在2021年12月份消费的总金额
+rowkey:user_date
+startRow:zhangsan_2021-12
+stopRow: zhangsan_2021-12.
+
+
+2021-12-05 09:08:00_zhangsan
+2021-12-05 09:08:00_lisi
+
+startRow: 2021-12-01 09:08:00_zhangsan
+          2021-12-05 09:08:00_lisi
+stopRow:2021-12-32 09:08:00_zhangsan
+
+（2）统计所有人在2021年12月份消费的总金额
+rowKey:date(yyyy-MM)-user-(-dd HH:mm:ss)    2021-12-zhangsa--05 09:08:00
+
+
+startRow: 2021-12
+stopRow:  2021-12.
+
+综合需求一和需求
+[date前7位]-[user]-[date剩余字符]
+
+rowKey:date(yyyy-MM)-user-(-dd HH:mm:ss)    2021-12-zhangsa--05 09:08:00
+需求一：
+starRow:2021-12-zhangsan
+stotpRow:2021-12-zhangsan.
+注意：在设计rowkey时拼接字符串的时候要注意范围问题
+
+
+ 2021-12-zhangsan--05 09:08:00
+ 2021-12-zhangsan(A-z)--05 09:08:00
+ 2021-12-zhangsan--05 09:08:00
+
+预分区&rowkey设计
+000|
+001|
+002|
+...
+119|
+（1）统计张三在2021年12月份消费的总金额  分区号取模之后拼成3位 比如取模位1 则拼成001
+rowkey:分区号(hash(user-月份)%120)-date(yyyy-MM)-user-(-dd HH:mm:ss)
+startRow:分区号-2021-12-zhangsan
+ stopRow:分区号-2021-12-zhangsan.
+
+
+
+000| – 009|号分区存储1月份数据
+...
+110| – 119| 号分区存储12月份数据
+
+2）统计所有人在2021年12月份消费的总金额  在不考虑年份的情况下这么设计
+rowKey:分区号(hash(user)%10+月份开始值)-date(yyyy-MM)-user-(-dd HH:mm:ss)  注意这个+号不是拼接的意思，是相加的意思
+对10取模能够得到0-9这10个数字
+为了确定这些相同月份的数据能够放到规定的范围内 需要加上月份对应分区范围的开始值，比如
+
+zs是12月份的数据8+110=118
+ls是12月份的数据6+110=116
+
+startRow:110|-2021-12
+ stopRow:119|-2021-12.
+
+如果考虑年的话可以在划分一个大范围，在大范围内在划分小范围确定月，然后在小范围内对用户做hash使得相同用户的数据在一块

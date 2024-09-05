@@ -1,0 +1,215 @@
+1. 创建schema(库)
+   create schema if not exists mydb ;
+
+   create schema if not exists "mydb3";
+
+2. 删除schema
+   drop schema if exists "mydb3";
+
+3. 创建表
+  CREATE TABLE IF NOT EXISTS student(
+  id VARCHAR primary key,
+  name VARCHAR,
+  addr VARCHAR);
+
+4. 插入(修改)数据
+  upsert into student (id, name, addr) values('1001','zhangsan','beijing');
+  upsert into student (id, name, addr) values('1002','lisi','shanghai');
+  upsert into student (id, name, addr) values('1002','lixiaosi','shanghai');
+  upsert into student (id, name, addr) values('1003','wangwu','shanghai');
+  upsert into student (id, name, addr) values('1004',null,null);
+
+5. 查询数据
+  select id ,name , addr from student;
+  select id ,name , addr from student where name  = 'lixiaosi'  ;
+
+6. 删除数据
+  delete from student where id = '1001' ;
+
+7. 联合主键
+CREATE TABLE IF NOT EXISTS us_population (
+State CHAR(2) NOT NULL,
+City VARCHAR NOT NULL,
+Population BIGINT
+CONSTRAINT my_pk PRIMARY KEY (state, city));
+
+  upsert into us_population values('NY','New York',8143197) ;
+  upsert into us_population values('CA','Los Angeles',3844829) ;
+
+
+8. 表的映射
+
+1) Hbase中没有表,phoenix中创建表会同时在hbase中也创建表
+
+2) Hbase中有表, 可以在phoenix中创建视图(只读)进行映射
+   create 'emp','info'
+   put 'emp','1001','info:name','zhangsan'
+   put 'emp','1001','info:addr','beijing'
+
+   create view "emp"(
+     id varchar primary key ,
+     "info"."name" varchar ,
+     "info"."addr" varchar
+   )
+
+   select * from "emp" ;
+   select id , "name","addr" from "emp" ;
+
+   upsert into "emp" values('1002','lisi','shanghai');
+
+   drop view "emp";
+
+
+3) Hbase中有表, 可以在phoenix中创建表进行映射
+
+   create table "emp"(
+     id varchar primary key ,
+     "info"."name" varchar ,
+     "info"."addr" varchar
+   )
+   COLUMN_ENCODED_BYTES = NONE;
+
+
+   select * from "emp" ;
+   select id , "name","addr" from "emp" ;
+
+   drop table "emp";
+
+
+ 9. 数值问题
+
+    phoenix存,phoenix查.没有问题
+    phoenix存,hbase查.有问题
+    hbase存,hbase查,没有问题
+    hbase存,phoenix查,有问题
+
+
+ create table test (
+   id varchar primary key ,
+   name varchar ,
+   salary integer
+ )
+ COLUMN_ENCODED_BYTES = NONE;
+
+ upsert into test values('1001','zs',123456);
+
+ put 'TEST','1002','0:NAME','ls'
+ put 'TEST','1002','0:SALARY',Bytes.toBytes(456789)   // Long
+
+
+  create table test1 (
+   id varchar primary key ,
+   name varchar ,
+   salary UNSIGNED_INT
+ )
+ COLUMN_ENCODED_BYTES = NONE;
+
+  upsert into test1 values('1001','zs',123456);
+
+  put 'TEST1','1002','0:NAME','ls'
+  put 'TEST1','1002','0:SALARY',Bytes.toBytes(456789)   // Long
+
+
+
+10. 全局二级索引
+    所谓的全局二级索引,意味着建索引会创建一张索引表.
+    在索引表中， 将索引列与原表中的rowkey组合起来作为索引表的rowkey.
+
+
+  CREATE TABLE IF NOT EXISTS student(
+  id VARCHAR primary key,
+  name VARCHAR,
+  addr VARCHAR);
+
+
+  explain select id from student ;   // FULL SCAN
+
+  explain select id from student where id = '1002' ;  //  POINT LOOKUP
+
+  explain select id from student where name = 'lixiaosi' ; // FULL SCAN
+
+  给name字段建索引
+  create index idx_student_name on student(name);
+  explain select id from student where name = 'lixiaosi' ; // RANGE SCAN
+
+  explain select id ,name from student where id ='1001' ;  // POINT LOOKUP
+  explain select id ,name from student where name  ='lixiaosi' ; //RANGE SCAN
+  explain select id ,name ,addr  from student where name  ='lixiaosi' ; //FULL SCAN
+
+  给name addr 建复合索引
+  drop index idx_student_name on student;
+
+  create index idx_student_name on student(name,addr);
+
+  explain select id ,name ,addr  from student where name  ='lixiaosi' ; //RANGE SCAN
+
+  explain select id ,name ,addr from student where name ='lixiaosi' and addr = 'beijing'; //RANGE SCAN
+
+  explain select id ,name ,addr from student where addr = 'beijing'; //FULL SCAN
+
+  explain select id ,name ,addr from student where addr = 'beijing' and name ='lixiaosi' ;//RANGE SCAN
+
+
+  给name列建索引包含addr列
+
+  drop index idx_student_name on student;
+
+  create index idx_student_name on student(name) include(addr);
+
+  explain select id ,name ,addr  from student where name  ='lixiaosi' ; //RANGE SCAN
+
+
+11. 本地二级索引
+  drop index idx_student_name on student;
+
+  create local index idx_student_name on student(name);
+
+  explain select id ,name ,addr  from student where name  ='lixiaosi' ; //RANGE SCAN
+
+12. hive与Hbase 整合
+
+1) 在hive中建表，对应着在hbase中也建表
+CREATE TABLE hive_hbase_emp_table(
+empno int,
+ename string,
+job string,
+mgr int,
+hiredate string,
+sal double,
+comm double,
+deptno int)
+STORED BY 'org.apache.hadoop.hive.hbase.HBaseStorageHandler'
+WITH SERDEPROPERTIES ("hbase.columns.mapping" = ":key,info:ename,info:job,info:mgr,info:hiredate,info:sal,info:comm,info:deptno")
+TBLPROPERTIES ("hbase.table.name" = "hbase_emp_table");
+
+
+CREATE TABLE emp(
+empno int,
+ename string,
+job string,
+mgr int,
+hiredate string,
+sal double,
+comm double,
+deptno int)
+row format delimited fields terminated by '\t';
+
+
+2） Hbase中已经有表， hive建表进行关联
+CREATE EXTERNAL TABLE relevance_hbase_emp(
+empno int,
+ename string,
+job string,
+mgr int,
+hiredate string,
+sal double,
+comm double,
+deptno int)
+STORED BY
+'org.apache.hadoop.hive.hbase.HBaseStorageHandler'
+WITH SERDEPROPERTIES ("hbase.columns.mapping" =
+":key,info:ename,info:job,info:mgr,info:hiredate,info:sal,info:comm,info:deptno")
+TBLPROPERTIES ("hbase.table.name" = "hbase_emp_table");
+
+
+
