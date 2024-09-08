@@ -8,14 +8,14 @@
 
 2. 运行镜像生成容器：
 
-   ```
+   ```shell
    docker run -itd --name hadoop01 -p 2201:22 -p 8088:8088 -p 9000:9000 -p 50070:50070 --privileged=true centos:7.9.2009 /usr/sbin/init
    
    ```
 
 3. 运行后查看 docker ps
 
-   ```
+   ```shell
    (base) ➜  ~ docker ps
    CONTAINER ID   IMAGE             COMMAND            CREATED          STATUS          PORTS                                                                                            NAMES
    ffe5923642b2   centos:7.9.2009   "/usr/sbin/init"   24 seconds ago   Up 23 seconds   0.0.0.0:8088->8088/tcp, 0.0.0.0:9000->9000/tcp, 0.0.0.0:50070->50070/tcp, 0.0.0.0:2201->22/tcp   hadoop01
@@ -81,7 +81,7 @@
 
 6. 传好后开始解压 指定解压路径为/usr/local
 
-   ```
+   ```shell
    tar -zxvf jdk-8u421-linux-x64.tar.gz -C /usr/local/
    [root@ffe5923642b2 local]# ln -s jdk1.8.0_421/ jdk
    [root@ffe5923642b2 local]# ll
@@ -98,6 +98,12 @@
    drwxr-xr-x 2 root root 4096 Apr 11  2018 sbin
    drwxr-xr-x 5 root root 4096 Nov 13  2020 share
    drwxr-xr-x 2 root root 4096 Apr 11  2018 src
+   
+   [root@ffe5923642b2 local]# source /etc/bashrc
+   [root@ffe5923642b2 local]# java -version
+   java version "1.8.0_421"
+   Java(TM) SE Runtime Environment (build 1.8.0_421-b09)
+   Java HotSpot(TM) 64-Bit Server VM (build 25.421-b09, mixed mode)
    ```
 
 接着修改bashrc环境变量文件 在里面配置环境变量这样每次启动环境变量就能自动配置好。
@@ -116,11 +122,71 @@ source /etc/bashrc 修改完成后运行此命令生效
 
 ```shell
 #导出镜像
-docker commit -m "first hadoop machine" -a "claem" hadoop01 新镜像名:tag名
-#查看镜像列表
+docker commit -m "first hadoop machine" -a "zxj" hadoop01 hadooop01:tag2024
+sha256:575b85c521af3c4077e0204d57d0e57f425b2be9ea9c179905c9617a5feb6826
 docker images
+
 #创建相同容器
-docker run -itd --name hadoop02 -p 2202:22 -p 50090:50090 --privileged=true 新镜像名:tag名 /usr/sbin/init
-docker run -itd --name hadoop03 -p 2203:22 --privileged=true 新镜像名:tag名 /usr/sbin/init
+docker run -itd --name hadoop02 -p 2202:22 -p 50090:50090 --privileged=true hadooop01:tag2024 /usr/sbin/init
+
+docker run -itd --name hadoop03 -p 2203:22 --privileged=true hadooop01:tag2024 /usr/sbin/init
+
 
 ```
+
+
+
+创建好容器并进入容器后在容器内终端使用hostname xxx可以修改容器root对应的名称，我们在三台机器上分别对应运行。
+
+```shell
+hostname hadoop01
+hostname hadoop02
+hostname hadoop03
+
+```
+
+
+
+```shell
+docker run -itd --name hadoop02 -p 2202:22 -p 50090:50090 --privileged=true hadooop01:tag2024 /usr/sbin/init
+docker exec -it hadoop02 /bin/bash
+hostname hadoop02
+```
+
+
+
+```shell
+docker run -itd --name hadoop03 -p 2203:22 --privileged=true hadooop01:tag2024 /usr/sbin/init
+docker exec -it hadoop03 /bin/bash
+hostname hadoop03
+```
+
+
+
+# 配置hadoop前置运行条件
+
+首先要确保三台hadoop服务器在同一网络内，这就需要我们把三台服务器所在的容器连接到同一网络，在docker内创建容器时如果不使用-net的话默认加入bridge桥接网络 所以我们需要在docker里单独创建一个桥接网络让三台容器加入即可
+
+```
+#查看docker 存在的网段
+docker network ls
+#创建名为bigdata的新网段
+docker network create hadoop-cluster-1
+# 三台容器连入bigdata网段
+docker network connect hadoop-cluster-1 hadoop01
+docker network connect hadoop-cluster-1 hadoop02
+docker network connect hadoop-cluster-1 hadoop03
+#断开三台容器与bridge的连接
+docker network disconnect bridge hadoop01
+docker network disconnect bridge hadoop02
+docker network disconnect bridge hadoop03
+
+```
+
+
+
+
+
+# 参考文档
+
+https://blog.csdn.net/wrz427/article/details/138273800

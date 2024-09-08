@@ -27,7 +27,7 @@ public class HBaseDemo {
     }
 
     public static void main(String[] args) throws IOException {
-        //createNameSpace("mydb2");
+        createNameSpace("mydb2");
 
         //createTable("","t1","info1","info2");
 
